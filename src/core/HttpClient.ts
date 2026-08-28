@@ -10,7 +10,9 @@ export interface HttpClientConfig {
   logFile?: string;
 }
 
-const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+function isRetryable(status: number): boolean {
+  return status === 429 || status >= 500;
+}
 
 export class HttpClient {
   private readonly maxRetries: number;
@@ -32,7 +34,7 @@ export class HttpClient {
     for (;;) {
       response = await fetch(url, init);
 
-      if (!RETRYABLE.has(response.status) || attempt >= this.maxRetries) {
+      if (!isRetryable(response.status) || attempt >= this.maxRetries) {
         break;
       }
 

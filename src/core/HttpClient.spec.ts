@@ -68,6 +68,15 @@ describe('HttpClient', () => {
     expect(init.body).toBe('{"content":');
   });
 
+  it('sends authHeader verbatim and takes precedence over token', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }));
+
+    await client.request('GET', '/api/v1/user', { options: { authHeader: 'NotBearer abc123' } });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe('NotBearer abc123');
+  });
+
   it('retries once on 429 and returns the successful response', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': '0' } }))
