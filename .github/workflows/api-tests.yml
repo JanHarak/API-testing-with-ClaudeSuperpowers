@@ -1,0 +1,110 @@
+name: API tests
+
+on:
+  schedule:
+    # GitHub Actions cron is UTC only and has no DST handling, so both candidate
+    # times are scheduled and a guard job lets exactly one of them through.
+    # 07:00 Europe/Prague during CEST (summer)
+    - cron: '0 5 * * *'
+    # 07:00 Europe/Prague during CET (winter)
+    - cron: '0 6 * * *'
+  # Manual runs skip the Prague-hour guard below. Note that GitHub only shows the
+  # "Run workflow" button once this file exists on the repository's default branch.
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Which tests to run
+        type: choice
+        default: all
+        options:
+          - all
+          - unit-only
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One account, one suite: never let two runs touch the data at the same time.
+concurrency:
+  group: todoist-api-tests
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Check Prague time
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Triggered by ${{ github.event_name }}; running."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HOUR=$(TZ=Europe/Prague date +%H)
+          echo "Current hour in Europe/Prague: $HOUR"
+
+          if [ "$HOUR" = "07" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 07:00 in Prague, skipping this cron."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Run Todoist API tests
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TODOIST_API_TOKEN: ${{ secrets.TODOIST_API_TOKEN }}
+      TODOIST_BASE_URL: https://api.todoist.com
+      TEST_PROJECT_PREFIX: QA-Automation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the API token secret is present
+        run: |
+          if [ -z "$TODOIST_API_TOKEN" ]; then
+            echo "::error::The TODOIST_API_TOKEN secret is not set in this repository."
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # The smoke suite talks to the live Todoist account. globalSetup creates a
+      # QA-Automation project, every test writes inside it, and globalTeardown
+      # deletes it again together with any qa-auto- labels. A manual run can opt
+      # out with the "unit-only" input to leave the account untouched.
+      - name: API smoke tests
+        if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all'
+        run: npm test
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports-${{ github.run_number }}
+          path: |
+            reports/html
+            reports/junit.xml
+          retention-days: 30
+          if-no-files-found: warn
