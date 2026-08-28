@@ -10,10 +10,14 @@ duplicated here.
 
 ## Where the work is
 
-- Branch: `feat/todoist-api-tests`
-- Worktree: `<repo>/../todoist-api-tests-wt` (sibling of the repo, NOT inside it)
+- Branch: `feat/todoist-api-tests`, checked out in the repository itself
 - `main` holds only the design spec, the implementation plan and `.gitignore`
 - Merge back into `main` happens only after the final whole-branch review
+
+The work was originally built in a separate git worktree. That worktree has
+been removed and the branch is now checked out directly in the repository, so
+the files are visible in the project directory. Nothing was lost in the move;
+`git log` is the record.
 
 ## The two documents that govern this work
 
@@ -68,11 +72,12 @@ cases pass schema names in from JSON data files, where a typo is plausible.
 
 ## Environment gotchas that cost time already
 
-1. **Never place this worktree under a dot-prefixed directory.** Jest 29 on
+1. **Never place this checkout under a dot-prefixed directory.** Jest 29 on
    Windows corrupts its glob-based `testMatch` when an ancestor directory
    starts with a dot: the run reports `0 matches` and every test silently
-   disappears. The worktree was originally created under `.claude/worktrees/`
+   disappears. The original worktree was created under `.claude/worktrees/`
    and had to be moved for exactly this reason. CI on Linux is unaffected.
+   This matters again if anyone creates a worktree for this branch later.
 2. **Do not run `npm test` until Task 6 is done.** It is the integration
    config and references `src/support/globalSetup.ts` and `globalTeardown.ts`,
    which Task 6 creates. Until then use `npm run test:unit`, or
