@@ -8,7 +8,17 @@ on:
     - cron: '0 5 * * *'
     # 07:00 Europe/Prague during CET (winter)
     - cron: '0 6 * * *'
+  # Manual runs skip the Prague-hour guard below. Note that GitHub only shows the
+  # "Run workflow" button once this file exists on the repository's default branch.
   workflow_dispatch:
+    inputs:
+      suite:
+        description: Which tests to run
+        type: choice
+        default: all
+        options:
+          - all
+          - unit-only
   push:
     branches: [main]
 
@@ -82,8 +92,10 @@ jobs:
 
       # The smoke suite talks to the live Todoist account. globalSetup creates a
       # QA-Automation project, every test writes inside it, and globalTeardown
-      # deletes it again together with any qa-auto- labels.
+      # deletes it again together with any qa-auto- labels. A manual run can opt
+      # out with the "unit-only" input to leave the account untouched.
       - name: API smoke tests
+        if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all'
         run: npm test
 
       - name: Upload reports
